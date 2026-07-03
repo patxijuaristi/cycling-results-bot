@@ -335,9 +335,80 @@ def fetch_results(stage_url: str, top_n: int) -> dict | None:
     }
 
 
+def _time_to_seconds(time_str: str) -> int:
+    """
+    Convert a time string (H:MM:SS or M:SS) to total seconds.
+
+    Args:
+        time_str: Time in "H:MM:SS" or "M:SS" format.
+
+    Returns:
+        Total seconds.
+    """
+    parts = time_str.split(":")
+    if len(parts) == 3:
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+    elif len(parts) == 2:
+        return int(parts[0]) * 60 + int(parts[1])
+    return 0
+
+
+def _format_gap(seconds: int) -> str:
+    """
+    Format a time gap in seconds to a readable string.
+
+    Args:
+        seconds: Gap in seconds.
+
+    Returns:
+        Formatted gap string (e.g., "+12s", "+1:23", "+1:02:30").
+    """
+    if seconds == 0:
+        return "s.t."
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    if h > 0:
+        return f"+{h}:{m:02d}:{s:02d}"
+    elif m > 0:
+        return f"+{m}:{s:02d}"
+    else:
+        return f"+{s}s"
+
+
+def _format_results_block(results: list, leader_time: str) -> str:
+    """
+    Format a results list showing gaps from the leader.
+
+    Args:
+        results: List of result dicts with rank, rider_name, team_name, time.
+        leader_time: The leader's absolute time string.
+
+    Returns:
+        Formatted string block.
+    """
+    leader_secs = _time_to_seconds(leader_time)
+    lines = []
+
+    for r in results:
+        rank = r["rank"]
+        name = r["rider_name"]
+        team = r["team_name"]
+        rider_secs = _time_to_seconds(r["time"])
+        gap = rider_secs - leader_secs
+
+        if rank == 1:
+            lines.append(f"  {rank}. {name} ({team})")
+        else:
+            gap_str = _format_gap(gap)
+            lines.append(f"  {rank}. {name}  {gap_str}")
+
+    return "\n".join(lines)
+
+
 def format_message(config: dict, stage_url: str, data: dict) -> str:
     """
-    Format results into a Telegram-friendly message.
+    Format results into a clean Telegram-friendly message.
 
     Args:
         config: Race configuration dict.
@@ -350,19 +421,21 @@ def format_message(config: dict, stage_url: str, data: dict) -> str:
     stage_name = stage_url.split("/")[-1].replace("-", " ").title()
     top_n = config["top_n"]
 
-    msg = f"🚴 *{config['race_name']} - {stage_name}*\n"
-    msg += f"📍 {data['departure']} → {data['arrival']} ({data['distance']} km)\n"
-    msg += f"📅 {data['date']}\n\n"
+    stage_block = _format_results_block(
+        data["stage_results"], data["stage_results"][0]["time"])
+    gc_block = _format_results_block(
+        data["gc"], data["gc"][0]["time"])
 
-    msg += f"🏁 *Stage Results (Top {top_n}):*\n"
-    for r in data["stage_results"]:
-        time_str = f" - {r['time']}" if r.get("time") else ""
-        msg += f"  {r['rank']}. {r['rider_name']} ({r['team_name']}){time_str}\n"
-
-    msg += f"\n🟡 *General Classification (Top {top_n}):*\n"
-    for r in data["gc"]:
-        time_str = f" - {r['time']}" if r.get("time") else ""
-        msg += f"  {r['rank']}. {r['rider_name']} ({r['team_name']}){time_str}\n"
+    msg = (
+        f"🚴 *{config['race_name']} — {stage_name}*\n"
+        f"📍 {data['departure']} → {data['arrival']} | {data['distance']} km\n"
+        f"\n"
+        f"🏁 *Stage Top {top_n}*\n"
+        f"{stage_block}\n"
+        f"\n"
+        f"🟡 *GC Top {top_n}*\n"
+        f"{gc_block}"
+    )
 
     return msg
 
