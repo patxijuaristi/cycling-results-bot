@@ -18,7 +18,12 @@ from datetime import date
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 from procyclingstats import Race, Stage
+from procyclingstats.errors import ExpectedParsingError
+
+# Load .env file for local development (ignored if not present)
+load_dotenv()
 
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
@@ -299,7 +304,7 @@ def get_today_stage_url(config: dict) -> str | None:
     return None
 
 
-def fetch_results(stage_url: str, top_n: int) -> dict:
+def fetch_results(stage_url: str, top_n: int) -> dict | None:
     """
     Fetch stage results and GC from Procyclingstats.
 
@@ -308,11 +313,16 @@ def fetch_results(stage_url: str, top_n: int) -> dict:
         top_n: Number of top results to include.
 
     Returns:
-        Dict with 'stage_results', 'gc', and stage metadata.
+        Dict with 'stage_results', 'gc', and stage metadata, or None if unavailable.
     """
     stage = Stage(stage_url)
 
-    stage_results = stage.results("rank", "rider_name", "team_name", "time")
+    try:
+        stage_results = stage.results("rank", "rider_name", "team_name", "time")
+    except ExpectedParsingError:
+        # Results not posted yet (stage still in progress or not started)
+        return None
+
     gc_results = stage.gc("rank", "rider_name", "team_name", "time")
 
     return {
@@ -381,6 +391,9 @@ def main():
 
     print(f"Fetching results for: {stage_url}")
     data = fetch_results(stage_url, config["top_n"])
+    if not data:
+        print("Results not available yet. Stage may still be in progress.")
+        return
     message = format_message(config, stage_url, data)
     print(message)
     send_telegram_message(token, chat_id, message)
