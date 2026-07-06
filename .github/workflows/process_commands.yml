@@ -30,6 +30,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          WEBHOOK_COMMAND: ${{ github.event.client_payload.command }}
+          WEBHOOK_CHAT_ID: ${{ github.event.client_payload.chat_id }}
         run: python src/main.py --commands-only
 
       - name: Commit config changes

@@ -138,6 +138,10 @@ def process_telegram_commands(config: dict, token: str, chat_id: str) -> bool:
     """
     Check for pending Telegram commands and process them.
 
+    When triggered by the Cloudflare Worker webhook relay, reads the command
+    directly from the WEBHOOK_COMMAND env var (getUpdates is unavailable in
+    webhook mode). Falls back to getUpdates polling for manual/cron runs.
+
     Supported commands:
         /setrace <url> <name> <start_date> <end_date> [top_n]
         /currentrace - Show current race config
@@ -151,7 +155,18 @@ def process_telegram_commands(config: dict, token: str, chat_id: str) -> bool:
     Returns:
         True if config was modified, False otherwise.
     """
-    # Fetch updates since last processed
+    # When triggered by the Cloudflare Worker, the command arrives via env vars
+    webhook_command = os.environ.get("WEBHOOK_COMMAND", "").strip()
+    webhook_chat_id = os.environ.get("WEBHOOK_CHAT_ID", "").strip()
+
+    if webhook_command:
+        print(f"Processing webhook command: {webhook_command[:30]}")
+        if webhook_chat_id != chat_id:
+            print("Webhook command from unauthorized chat. Ignoring.")
+            return False
+        return _dispatch_command(config, token, chat_id, webhook_command)
+
+    # Fall back to getUpdates polling (cron / manual workflow_dispatch runs)
     offset = config.get("last_update_id", 0) + 1
     url = f"https://api.telegram.org/bot{token}/getUpdates"
     params = {"offset": offset, "timeout": 5}
@@ -180,14 +195,30 @@ def process_telegram_commands(config: dict, token: str, chat_id: str) -> bool:
         if msg_chat_id != chat_id:
             continue
 
-        if text.startswith("/setrace"):
-            config_changed = _handle_setrace(config, token, chat_id, text)
-        elif text.startswith("/currentrace"):
-            _handle_currentrace(config, token, chat_id)
-        elif text.startswith("/help"):
-            _handle_help(token, chat_id)
+        config_changed = _dispatch_command(config, token, chat_id, text) or config_changed
 
     return config_changed
+
+
+def _dispatch_command(config: dict, token: str, chat_id: str, text: str) -> bool:
+    """Route a command text string to the appropriate handler.
+
+    Args:
+        config: Current configuration dict (modified in place).
+        token: Bot API token.
+        chat_id: Authorized chat ID to reply to.
+        text: Raw command text (e.g. '/setrace\\nurl: ...').
+
+    Returns:
+        True if config was modified, False otherwise.
+    """
+    if text.startswith("/setrace"):
+        return _handle_setrace(config, token, chat_id, text)
+    elif text.startswith("/currentrace"):
+        _handle_currentrace(config, token, chat_id)
+    elif text.startswith("/help"):
+        _handle_help(token, chat_id)
+    return False
 
 
 def _handle_setrace(config: dict, token: str, chat_id: str, text: str) -> bool:

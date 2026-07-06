@@ -45,7 +45,13 @@ export default {
           "Content-Type": "application/json",
           "User-Agent": "cycling-results-bot-worker",
         },
-        body: JSON.stringify({ event_type: "telegram-command" }),
+        body: JSON.stringify({
+          event_type: "telegram-command",
+          client_payload: {
+            command: text,
+            chat_id: String(body?.message?.chat?.id ?? ""),
+          },
+        }),
       }
     );
 
