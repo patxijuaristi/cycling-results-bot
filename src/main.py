@@ -14,7 +14,6 @@ Supported commands (sent to the bot via Telegram):
 import json
 import os
 import sys
-import time
 from datetime import date
 from pathlib import Path
 
@@ -23,17 +22,32 @@ import requests
 from dotenv import load_dotenv
 from procyclingstats import Race, Stage
 from procyclingstats.errors import ExpectedParsingError
-from procyclingstats.scraper import Scraper
 
 # Load .env file for local development (ignored if not present)
 load_dotenv()
 
-# Configure cloudscraper session for procyclingstats to bypass Cloudflare
-_scraper_session = cloudscraper.create_scraper(
-    browser={"browser": "chrome", "platform": "linux", "desktop": True},
-    delay=5,
+PCS_BASE_URL = "https://www.procyclingstats.com/"
+
+# Single cloudscraper session reused for all PCS requests
+_pcs_scraper = cloudscraper.create_scraper(
+    browser={"browser": "chrome", "platform": "windows", "desktop": True},
 )
-Scraper._scraper = _scraper_session
+
+
+def _fetch_pcs_html(relative_url: str) -> str:
+    """
+    Fetch HTML from procyclingstats.com using cloudscraper to bypass Cloudflare.
+
+    Args:
+        relative_url: Relative URL path on procyclingstats.com.
+
+    Returns:
+        Raw HTML string.
+    """
+    url = PCS_BASE_URL + relative_url
+    response = _pcs_scraper.get(url, timeout=30)
+    response.raise_for_status()
+    return response.text
 
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
@@ -301,7 +315,8 @@ def get_today_stage_url(config: dict) -> str | None:
         return None
 
     # Fetch race overview to get stages with dates
-    race = Race(config["race_url"])
+    html = _fetch_pcs_html(config["race_url"])
+    race = Race(config["race_url"], html=html, update_html=False)
     stages = race.stages()
 
     # Match today's date (format in stages is "MM-DD")
@@ -325,7 +340,8 @@ def fetch_results(stage_url: str, top_n: int) -> dict | None:
     Returns:
         Dict with 'stage_results', 'gc', and stage metadata, or None if unavailable.
     """
-    stage = Stage(stage_url)
+    html = _fetch_pcs_html(stage_url)
+    stage = Stage(stage_url, html=html, update_html=False)
 
     try:
         stage_results = stage.results("rank", "rider_name", "team_name", "time")
