@@ -14,16 +14,26 @@ Supported commands (sent to the bot via Telegram):
 import json
 import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 
+import cloudscraper
 import requests
 from dotenv import load_dotenv
 from procyclingstats import Race, Stage
 from procyclingstats.errors import ExpectedParsingError
+from procyclingstats.scraper import Scraper
 
 # Load .env file for local development (ignored if not present)
 load_dotenv()
+
+# Configure cloudscraper session for procyclingstats to bypass Cloudflare
+_scraper_session = cloudscraper.create_scraper(
+    browser={"browser": "chrome", "platform": "linux", "desktop": True},
+    delay=5,
+)
+Scraper._scraper = _scraper_session
 
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
@@ -337,19 +347,19 @@ def fetch_results(stage_url: str, top_n: int) -> dict | None:
 
 def _time_to_seconds(time_str: str) -> int:
     """
-    Convert a time string (H:MM:SS or M:SS) to total seconds.
+    Convert a time string (H:MM:SS, M:SS, or with decimals) to total seconds.
 
     Args:
-        time_str: Time in "H:MM:SS" or "M:SS" format.
+        time_str: Time in "H:MM:SS" or "M:SS" format (may have decimals).
 
     Returns:
-        Total seconds.
+        Total seconds (rounded).
     """
     parts = time_str.split(":")
     if len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(float(parts[2]))
     elif len(parts) == 2:
-        return int(parts[0]) * 60 + int(parts[1])
+        return int(parts[0]) * 60 + int(float(parts[1]))
     return 0
 
 
