@@ -49,21 +49,22 @@ def _fetch_pcs_html(relative_url: str) -> str:
         Raw HTML string.
     """
     url = PCS_BASE_URL + relative_url
-    api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+    api_key = os.environ.get("SCRAPFLY_API_KEY")
 
     if api_key:
-        # Use ScrapingBee to bypass Cloudflare from CI/datacenter IPs
+        # Use Scrapfly to bypass Cloudflare from CI/datacenter IPs
         response = requests.get(
-            "https://app.scrapingbee.com/api/v1/",
-            params={"api_key": api_key, "url": url, "render_js": "false"},
+            "https://api.scrapfly.io/scrape",
+            params={"key": api_key, "url": url, "render_js": "false"},
             timeout=60,
         )
+        response.raise_for_status()
+        return response.json()["result"]["content"]
     else:
         # Local dev: use cloudscraper directly (home IP not blocked)
         response = _pcs_scraper.get(url, timeout=30)
-
-    response.raise_for_status()
-    return response.text
+        response.raise_for_status()
+        return response.text
 
 
 CONFIG_PATH = Path(__file__).resolve().parent.parent / "config.json"
