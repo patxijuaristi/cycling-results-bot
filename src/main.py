@@ -75,11 +75,26 @@ def load_config() -> dict:
     """
     Load race configuration from config.json.
 
+    Automatically migrates the old single-race format to the new multi-race
+    format (a 'races' list) if needed.
+
     Returns:
-        Dict with race_url, race_name, start_date, end_date, top_n, last_update_id.
+        Dict with 'races' list and 'last_update_id'.
     """
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+
+    # Migrate old single-race flat format to new races-list format
+    if "race_url" in config:
+        config["races"] = [{
+            "race_url": config.pop("race_url"),
+            "race_name": config.pop("race_name"),
+            "start_date": config.pop("start_date"),
+            "end_date": config.pop("end_date"),
+            "top_n": config.pop("top_n", 5),
+        }]
+
+    return config
 
 
 def save_config(config: dict) -> None:
@@ -286,39 +301,71 @@ def _handle_setrace(config: dict, token: str, chat_id: str, text: str) -> bool:
             "❌ Invalid date format. Use YYYY-MM-DD.")
         return False
 
-    # Update config
-    config["race_url"] = params["url"]
-    config["race_name"] = params["name"]
-    config["start_date"] = params["start"]
-    config["end_date"] = params["end"]
-    config["top_n"] = int(params.get("top", config.get("top_n", 5)))
+    # Build the new race entry
+    new_race = {
+        "race_url": params["url"],
+        "race_name": params["name"],
+        "start_date": params["start"],
+        "end_date": params["end"],
+        "top_n": int(params.get("top", 5)),
+    }
+
+    # Add to list, or update if the same URL already exists
+    races = config.setdefault("races", [])
+    for i, race in enumerate(races):
+        if race["race_url"] == new_race["race_url"]:
+            races[i] = new_race
+            action = "updated"
+            break
+    else:
+        races.append(new_race)
+        action = "added"
+
+    # Sort races by start date so the list is chronological
+    races.sort(key=lambda r: r["start_date"])
 
     send_telegram_message(token, chat_id,
-        f"✅ *Race updated!*\n"
-        f"🏁 {config['race_name']}\n"
-        f"📅 {config['start_date']} → {config['end_date']}\n"
-        f"🔗 `{config['race_url']}`\n"
-        f"📊 Top {config['top_n']}")
+        f"✅ *Race {action}!*\n"
+        f"🏁 {new_race['race_name']}\n"
+        f"📅 {new_race['start_date']} → {new_race['end_date']}\n"
+        f"🔗 `{new_race['race_url']}`\n"
+        f"📊 Top {new_race['top_n']}")
 
-    print(f"Config updated to: {config['race_name']}")
+    print(f"Race {action}: {new_race['race_name']}")
     return True
 
 
 def _handle_currentrace(config: dict, token: str, chat_id: str) -> None:
     """
-    Handle /currentrace command. Shows current configuration.
+    Handle /currentrace command. Shows all configured races.
 
     Args:
         config: Current config dict.
         token: Bot API token.
         chat_id: Chat ID to reply to.
     """
-    send_telegram_message(token, chat_id,
-        f"📋 *Current configuration:*\n"
-        f"🏁 {config['race_name']}\n"
-        f"📅 {config['start_date']} → {config['end_date']}\n"
-        f"🔗 `{config['race_url']}`\n"
-        f"📊 Top {config['top_n']}")
+    races = config.get("races", [])
+    if not races:
+        send_telegram_message(token, chat_id, "No races configured yet. Use /setrace to add one.")
+        return
+
+    today = date.today()
+    lines = ["📋 *Configured races:*\n"]
+    for race in races:
+        start = date.fromisoformat(race["start_date"])
+        end = date.fromisoformat(race["end_date"])
+        if start <= today <= end:
+            status = "🟢 active"
+        elif today < start:
+            status = "🔜 upcoming"
+        else:
+            status = "✅ finished"
+        lines.append(
+            f"{status} *{race['race_name']}*\n"
+            f"  📅 {race['start_date']} → {race['end_date']}\n"
+            f"  🔗 `{race['race_url']}`"
+        )
+    send_telegram_message(token, chat_id, "\n\n".join(lines))
 
 
 def _handle_help(token: str, chat_id: str) -> None:
@@ -344,37 +391,41 @@ def _handle_help(token: str, chat_id: str) -> None:
         "/help - Show this message")
 
 
-def get_today_stage_url(config: dict) -> str | None:
+def get_today_stage_url(config: dict) -> tuple[str, dict] | None:
     """
-    Determine today's stage URL by matching the current date
-    against the race stages calendar.
+    Find today's active race and stage URL by checking all configured races.
 
     Args:
-        config: Race configuration dict.
+        config: Config dict containing a 'races' list.
 
     Returns:
-        Stage URL string if a stage is scheduled today, None otherwise.
+        Tuple of (stage_url, race_config) if a stage is scheduled today,
+        None otherwise.
     """
     today = date.today()
-    start = date.fromisoformat(config["start_date"])
-    end = date.fromisoformat(config["end_date"])
+    races = config.get("races", [])
 
-    if today < start or today > end:
-        print(f"Today ({today}) is outside {config['race_name']} dates ({start} to {end}).")
+    for race in races:
+        start = date.fromisoformat(race["start_date"])
+        end = date.fromisoformat(race["end_date"])
+
+        if today < start or today > end:
+            continue
+
+        # This race is active today — find today's stage
+        html = _fetch_pcs_html(race["race_url"])
+        pcs_race = Race(race["race_url"], html=html, update_html=False)
+        stages = pcs_race.stages()
+
+        today_str = today.strftime("%m-%d")
+        for stage in stages:
+            if stage.get("date") == today_str:
+                return stage.get("stage_url"), race
+
+        print(f"No stage found for today ({today}) in {race['race_name']}. Likely a rest day.")
         return None
 
-    # Fetch race overview to get stages with dates
-    html = _fetch_pcs_html(config["race_url"])
-    race = Race(config["race_url"], html=html, update_html=False)
-    stages = race.stages()
-
-    # Match today's date (format in stages is "MM-DD")
-    today_str = today.strftime("%m-%d")
-    for stage in stages:
-        if stage.get("date") == today_str:
-            return stage.get("stage_url")
-
-    print(f"No stage found for today ({today}). Likely a rest day.")
+    print(f"Today ({today}) is not within any configured race dates.")
     return None
 
 
@@ -543,18 +594,18 @@ def main():
         print("Config was updated. Will use new config for results.")
 
     # Step 2: Send today's stage results if applicable
-    print(f"Race: {config['race_name']}")
-    stage_url = get_today_stage_url(config)
-    if not stage_url:
+    result = get_today_stage_url(config)
+    if not result:
         print("No stage today. Exiting.")
         return
 
-    print(f"Fetching results for: {stage_url}")
-    data = fetch_results(stage_url, config["top_n"])
+    stage_url, active_race = result
+    print(f"Race: {active_race['race_name']} — fetching: {stage_url}")
+    data = fetch_results(stage_url, active_race["top_n"])
     if not data:
         print("Results not available yet. Stage may still be in progress.")
         return
-    message = format_message(config, stage_url, data)
+    message = format_message(active_race, stage_url, data)
     print(message)
     send_telegram_message(token, chat_id, message)
 
