@@ -28,7 +28,7 @@ load_dotenv()
 
 PCS_BASE_URL = "https://www.procyclingstats.com/"
 
-# Single cloudscraper session reused for all PCS requests
+# Single cloudscraper session for local development
 _pcs_scraper = cloudscraper.create_scraper(
     browser={"browser": "chrome", "platform": "windows", "desktop": True},
 )
@@ -36,7 +36,11 @@ _pcs_scraper = cloudscraper.create_scraper(
 
 def _fetch_pcs_html(relative_url: str) -> str:
     """
-    Fetch HTML from procyclingstats.com using cloudscraper to bypass Cloudflare.
+    Fetch HTML from procyclingstats.com.
+
+    Uses ScrapingBee proxy if SCRAPINGBEE_API_KEY is set (for CI/cloud environments
+    where datacenter IPs are blocked by Cloudflare). Falls back to direct cloudscraper
+    for local development.
 
     Args:
         relative_url: Relative URL path on procyclingstats.com.
@@ -45,7 +49,19 @@ def _fetch_pcs_html(relative_url: str) -> str:
         Raw HTML string.
     """
     url = PCS_BASE_URL + relative_url
-    response = _pcs_scraper.get(url, timeout=30)
+    api_key = os.environ.get("SCRAPINGBEE_API_KEY")
+
+    if api_key:
+        # Use ScrapingBee to bypass Cloudflare from CI/datacenter IPs
+        response = requests.get(
+            "https://app.scrapingbee.com/api/v1/",
+            params={"api_key": api_key, "url": url, "render_js": "false"},
+            timeout=60,
+        )
+    else:
+        # Local dev: use cloudscraper directly (home IP not blocked)
+        response = _pcs_scraper.get(url, timeout=30)
+
     response.raise_for_status()
     return response.text
 

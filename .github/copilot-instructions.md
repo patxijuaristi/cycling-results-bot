@@ -50,6 +50,7 @@ requirements.txt         # Python dependencies
 ## Environment Variables (GitHub Secrets)
 - `TELEGRAM_BOT_TOKEN`: Bot token from @BotFather
 - `TELEGRAM_CHAT_ID`: Target chat/user ID for messages (also used for auth)
+- `SCRAPINGBEE_API_KEY`: ScrapingBee API key to bypass Cloudflare from GitHub Actions IPs (free tier sufficient)
 
 ## Dependencies
 - `procyclingstats` — Web scraper for procyclingstats.com (MIT license)

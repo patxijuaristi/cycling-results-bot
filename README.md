@@ -54,6 +54,7 @@ Go to `Settings > Secrets and variables > Actions > Secrets`:
 |--------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather |
 | `TELEGRAM_CHAT_ID` | Your chat ID (see step above) |
+| `SCRAPINGBEE_API_KEY` | API key from [scrapingbee.com](https://scrapingbee.com) (free tier: 1000 credits/month) |
 
 ### 4. Push the code
 The workflow runs daily at 6pm CEST. It will:
