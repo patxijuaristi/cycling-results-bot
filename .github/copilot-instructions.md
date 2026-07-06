@@ -31,6 +31,7 @@ requirements.txt         # Python dependencies
 - Race-specific configuration is stored in `config.json` and managed via Telegram.
 - Use type hints for function signatures.
 - Keep the script simple and single-purpose — no unnecessary abstractions.
+- **Never run `git commit` or `git push` unless explicitly asked by the user.**
 
 ## Telegram Commands
 - `/setrace` - Set a new race (multi-line with url, name, start, end, top)
