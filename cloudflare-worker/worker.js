@@ -50,8 +50,9 @@ export default {
     );
 
     if (!response.ok) {
-      // Log the error but return 200 to Telegram so it doesn't retry endlessly
-      console.error(`GitHub API error: ${response.status}`);
+      const errorBody = await response.text();
+      console.error(`GitHub API error: ${response.status} — ${errorBody}`);
+      console.error(`Token present: ${!!env.GITHUB_TOKEN}, repo: ${env.GITHUB_REPO}`);
     }
 
     return new Response("OK", { status: 200 });
