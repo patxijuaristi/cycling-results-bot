@@ -11,6 +11,7 @@ Supported commands (sent to the bot via Telegram):
     /help
 """
 
+import argparse
 import json
 import os
 import sys
@@ -485,6 +486,14 @@ def format_message(config: dict, stage_url: str, data: dict) -> str:
 
 def main():
     """Main entry point: process commands, then fetch/send results if applicable."""
+    parser = argparse.ArgumentParser(description="Cycling Results Bot")
+    parser.add_argument(
+        "--commands-only",
+        action="store_true",
+        help="Only process Telegram commands, skip results fetching.",
+    )
+    args = parser.parse_args()
+
     token, chat_id = get_telegram_credentials()
     config = load_config()
 
@@ -494,6 +503,10 @@ def main():
 
     # Always save (at minimum updates last_update_id)
     save_config(config)
+
+    if args.commands_only:
+        print("Commands-only mode. Skipping results.")
+        return
 
     if config_changed:
         print("Config was updated. Will use new config for results.")

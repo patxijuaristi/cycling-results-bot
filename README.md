@@ -87,3 +87,34 @@ python src/main.py
 
 ## Manual Trigger
 Run the workflow anytime from the GitHub Actions tab using `workflow_dispatch` (useful for testing or processing commands immediately).
+
+## Instant Command Processing (Optional)
+
+By default, Telegram commands are processed at the next 6pm run. For near-instant responses (~30–60 seconds), set up the included Cloudflare Worker as a webhook relay.
+
+### How it works
+```
+You send /setrace → Telegram → Cloudflare Worker → GitHub API → workflow runs → bot replies
+```
+
+### Setup
+
+**1. Deploy the Worker**
+
+Go to [workers.cloudflare.com](https://workers.cloudflare.com), create a free account, and create a new Worker. Paste the contents of `cloudflare-worker/worker.js`.
+
+**2. Set Worker secrets**
+
+In the Worker's Settings → Variables, add:
+| Name | Value |
+|------|-------|
+| `GITHUB_TOKEN` | A GitHub Personal Access Token with `repo` scope ([create one here](https://github.com/settings/tokens)) |
+| `GITHUB_REPO` | `patxijuaristi/cycling-results-bot` (your fork's `owner/repo`) |
+
+**3. Set the Telegram webhook**
+
+Replace `<BOT_TOKEN>` and `<WORKER_URL>` and open this in your browser:
+```
+https://api.telegram.org/bot<BOT_TOKEN>/setWebhook?url=<WORKER_URL>
+```
+Telegram will now push every message directly to the Worker instead of queuing it for polling.

@@ -1,10 +1,11 @@
-name: Cycling Race Daily Results
+name: Process Telegram Commands
 
 on:
-  schedule:
-    # 6pm CEST (Spain summer time) = 16:00 UTC
-    - cron: '0 16 * * *'
-  workflow_dispatch: # Allow manual trigger
+  # Triggered by the Cloudflare Worker webhook relay when a Telegram message arrives
+  repository_dispatch:
+    types: [telegram-command]
+  # Also available for manual triggering from the GitHub Actions UI
+  workflow_dispatch:
 
 # Prevent concurrent runs from causing git push conflicts
 concurrency:
@@ -12,28 +13,24 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  send-results:
+  process-commands:
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Run bot
+      - name: Process Telegram commands
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SCRAPFLY_API_KEY: ${{ secrets.SCRAPFLY_API_KEY }}
-        run: python src/main.py
+        run: python src/main.py --commands-only
 
       - name: Commit config changes
         run: |

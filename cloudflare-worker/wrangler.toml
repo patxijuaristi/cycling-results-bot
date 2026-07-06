@@ -1,0 +1,9 @@
+name = "cycling-results-bot"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# GITHUB_REPO can live here since it's not sensitive.
+# GITHUB_TOKEN must be added as an encrypted secret in the Cloudflare dashboard:
+#   Worker > Settings > Variables > Add variable (set as Secret)
+[vars]
+GITHUB_REPO = "patxijuaristi/cycling-results-bot"
