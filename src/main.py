@@ -54,9 +54,10 @@ def _fetch_pcs_html(relative_url: str) -> str:
 
     if api_key:
         # Use Scrapfly to bypass Cloudflare from CI/datacenter IPs
+        # cache=false ensures we always get fresh stage data, not a cached page
         response = requests.get(
             "https://api.scrapfly.io/scrape",
-            params={"key": api_key, "url": url, "render_js": "false"},
+            params={"key": api_key, "url": url, "render_js": "false", "cache": "false"},
             timeout=60,
         )
         response.raise_for_status()
@@ -188,6 +189,11 @@ def process_telegram_commands(config: dict, token: str, chat_id: str) -> bool:
 
     try:
         response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 409:
+            # 409 Conflict: a webhook is active — getUpdates is disabled.
+            # Commands arrive via WEBHOOK_COMMAND env var instead.
+            print("Webhook mode active — skipping getUpdates polling.")
+            return False
         response.raise_for_status()
     except requests.RequestException as e:
         print(f"Failed to fetch Telegram updates: {e}")
