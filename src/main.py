@@ -57,11 +57,31 @@ def _fetch_pcs_html(relative_url: str) -> str:
         # cache=false ensures we always get fresh stage data, not a cached page
         response = requests.get(
             "https://api.scrapfly.io/scrape",
-            params={"key": api_key, "url": url, "render_js": "false", "cache": "false"},
+            params={
+                "key": api_key,
+                "url": url,
+                "render_js": "false",
+                "asp": "true",   # Anti-Scraping Protection: uses residential proxies to bypass Cloudflare
+                "cache": "false",
+            },
             timeout=60,
         )
         response.raise_for_status()
-        return response.json()["result"]["content"]
+        data = response.json()
+        result = data.get("result", {})
+
+        if not result.get("success", False):
+            raise ConnectionError(
+                f"Scrapfly failed for {url}: "
+                f"status={result.get('status_code')} "
+                f"reason={data.get('error', {}).get('message', 'unknown')}"
+            )
+
+        content = result.get("content", "")
+        if "Just a moment" in content or "cf-browser-verification" in content:
+            raise ConnectionError(f"Scrapfly returned a Cloudflare challenge page for {url}")
+
+        return content
     else:
         # Local dev: use cloudscraper directly (home IP not blocked)
         response = _pcs_scraper.get(url, timeout=30)
@@ -422,6 +442,7 @@ def get_today_stage_url(config: dict) -> tuple[str, dict] | None:
         html = _fetch_pcs_html(race["race_url"])
         pcs_race = Race(race["race_url"], html=html, update_html=False)
         stages = pcs_race.stages()
+        print(f"Fetched {len(stages)} stages for {race['race_name']}")
 
         today_str = today.strftime("%m-%d")
         for stage in stages:
@@ -600,7 +621,13 @@ def main():
         print("Config was updated. Will use new config for results.")
 
     # Step 2: Send today's stage results if applicable
-    result = get_today_stage_url(config)
+    try:
+        result = get_today_stage_url(config)
+    except Exception as e:
+        msg = f"⚠️ Bot error fetching stage: {e}"
+        print(msg)
+        send_telegram_message(token, chat_id, msg)
+        return
     if not result:
         print("No stage today. Exiting.")
         return
