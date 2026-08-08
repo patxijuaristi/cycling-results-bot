@@ -8,6 +8,13 @@
             "top_n": 5
         },
         {
+            "race_url": "race/volta-a-portugal/2026",
+            "race_name": "Volta Portugal 2026",
+            "start_date": "2026-08-05",
+            "end_date": "2026-08-16",
+            "top_n": 5
+        },
+        {
             "race_url": "race/vuelta-a-espana/2026",
             "race_name": "La Vuelta 2026",
             "start_date": "2026-08-22",
